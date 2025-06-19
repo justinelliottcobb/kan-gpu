@@ -1,4 +1,5 @@
 use std::ops::Range;
+use std::collections::HashMap;
 use wgpu::*;
 use wgpu::util::BufferInitDescriptor;
 use wgpu::util::DeviceExt;
@@ -153,6 +154,10 @@ impl BSpline {
         });
         
         let compute_pipeline = device.create_compute_pipeline(&ComputePipelineDescriptor {
+            compilation_options: PipelineCompilationOptions {
+                constants: &HashMap::new(),
+                zero_initialize_workgroup_memory: false,
+            },
             label: Some("BSpline Compute Pipeline"),
             layout: Some(&pipeline_layout),
             module: &shader,
@@ -241,7 +246,6 @@ impl BSpline {
         // Create command encoder
         let mut encoder = self.device.create_command_encoder(&CommandEncoderDescriptor {
             label: Some("BSpline Command Encoder"),
-            timestamp_writes: None,
         });
         
         {

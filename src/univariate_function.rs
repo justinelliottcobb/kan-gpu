@@ -29,7 +29,7 @@ pub struct UnivariateFunction {
 
 impl UnivariateFunction {
     /// Create a new univariate function with random weights
-    pub async fn new(range: Range<f32>, num_knots: usize, degree: usize) -> Self {
+    pub async fn new(&self, range: Range<f32>, num_knots: usize, degree: usize) -> Self {
         let spline = BSpline::new(range, num_knots, degree).await;
         let num_weights = num_knots + degree - 1;
         
