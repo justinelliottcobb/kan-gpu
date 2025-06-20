@@ -1,8 +1,7 @@
 use std::ops::Range;
 use std::collections::HashMap;
 use wgpu::*;
-use wgpu::util::BufferInitDescriptor;
-use wgpu::util::DeviceExt;
+use wgpu::util::{BufferInitDescriptor, DeviceExt};
 use bytemuck::{Pod, Zeroable};
 use crate::shaders::BSPLINE_SHADER;
 
@@ -31,19 +30,16 @@ pub struct BSpline {
     pub knots_buffer: Buffer,
     pub compute_pipeline: ComputePipeline,
     pub bind_group_layout: BindGroupLayout,
-    pub bind_group: BindGroup,
     pub output_buffer: Buffer,
 }
 
 impl BSpline {
     /// Create a new B-spline with uniformly spaced knots over the range
-    pub async fn new(&self, range: Range<f32>, num_knots: usize, degree: usize) -> Self {
+    pub async fn new(range: Range<f32>, num_knots: usize, degree: usize) -> Self {
         // Initialize WGPU
         let instance = Instance::new(InstanceDescriptor {
             backends: Backends::all(),
-            dx12_shader_compiler: Default::default(),
-            gles_minor_version: Gles3MinorVersion::default(),
-            flags: InstanceFlags::default(),
+            ..Default::default()
         });
 
         let adapter = instance
@@ -164,38 +160,6 @@ impl BSpline {
             entry_point: "main",
         });
         
-        // Create params buffer (will be updated per evaluation)
-        let params = BSplineParams {
-            x: 0.0, // Will be updated later
-            degree: degree as u32,
-        };
-        
-        let params_buffer = self.device.create_buffer_init(&BufferInitDescriptor {
-            label: Some("Params Buffer"),
-            contents: bytemuck::bytes_of(&params),
-            usage: BufferUsages::UNIFORM | BufferUsages::COPY_DST,
-        });
-        
-        // Create bind group
-        let bind_group = device.create_bind_group(&BindGroupDescriptor {
-            label: Some("BSpline Bind Group"),
-            layout: &bind_group_layout,
-            entries: &[
-                BindGroupEntry {
-                    binding: 0,
-                    resource: knots_buffer.as_entire_binding(),
-                },
-                BindGroupEntry {
-                    binding: 1,
-                    resource: output_buffer.as_entire_binding(),
-                },
-                BindGroupEntry {
-                    binding: 2,
-                    resource: params_buffer.as_entire_binding(),
-                },
-            ],
-        });
-        
         BSpline {
             knots,
             degree,
@@ -204,14 +168,13 @@ impl BSpline {
             knots_buffer,
             compute_pipeline,
             bind_group_layout,
-            bind_group,
             output_buffer,
         }
     }
     
     /// Evaluate the B-spline basis functions at a given point (on GPU)
     pub async fn evaluate_basis_gpu(&self, x: f32) -> Vec<f32> {
-        // Update params buffer with new x value
+        // Create params buffer with current x value
         let params = BSplineParams {
             x,
             degree: self.degree as u32,

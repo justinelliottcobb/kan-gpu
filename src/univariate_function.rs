@@ -1,6 +1,7 @@
 use std::ops::Range;
+use std::collections::HashMap;
 use wgpu::*;
-use wgpu::util::BufferInitDescriptor;
+use wgpu::util::{BufferInitDescriptor, DeviceExt};
 use bytemuck::{Pod, Zeroable};
 use crate::bspline::BSpline;
 use crate::shaders::{UNIVARIATE_FUNCTION_SHADER, WEIGHT_UPDATE_SHADER};
@@ -29,8 +30,8 @@ pub struct UnivariateFunction {
 
 impl UnivariateFunction {
     /// Create a new univariate function with random weights
-    pub async fn new(&self, range: Range<f32>, num_knots: usize, degree: usize) -> Self {
-        let spline = BSpline::new(range, num_knots, degree).await;
+    pub async fn new(range: Range<f32>, num_knots: usize, degree: usize) -> Self {
+        let spline = crate::bspline::BSpline::new(range, num_knots, degree).await;
         let num_weights = num_knots + degree - 1;
         
         // Initialize weights with small random values
@@ -109,6 +110,10 @@ impl UnivariateFunction {
         });
         
         let compute_pipeline = device.create_compute_pipeline(&ComputePipelineDescriptor {
+            compilation_options: PipelineCompilationOptions {
+                constants: &HashMap::new(),
+                zero_initialize_workgroup_memory: false,
+            },
             label: Some("Function Compute Pipeline"),
             layout: Some(&pipeline_layout),
             module: &shader,
