@@ -10,6 +10,11 @@ async fn main() {
     // Create a simple B-spline
     let bspline = BSpline::new(-1.0..1.0, 5, 3).await;
     
+    println!("B-spline info:");
+    println!("  Knots: {:?}", bspline.knots);
+    println!("  Degree: {}", bspline.degree);
+    println!("  Expected basis functions: {}", bspline.knots.len() - bspline.degree - 1);
+    
     // Test evaluation at several points
     let test_points = [-0.5, 0.0, 0.5];
     
@@ -20,9 +25,23 @@ async fn main() {
         let cpu_result = bspline.evaluate_basis(x);
         println!("CPU result: {:?}", cpu_result);
         
+        // Check for any non-zero values
+        let cpu_nonzero: Vec<(usize, f32)> = cpu_result.iter().enumerate()
+            .filter(|(_, &val)| val.abs() > 1e-6)
+            .map(|(i, &val)| (i, val))
+            .collect();
+        println!("CPU non-zero: {:?}", cpu_nonzero);
+        
         // GPU evaluation
         let gpu_result = bspline.evaluate_basis_gpu(x).await;
         println!("GPU result: {:?}", gpu_result);
+        
+        // Check for any non-zero values
+        let gpu_nonzero: Vec<(usize, f32)> = gpu_result.iter().enumerate()
+            .filter(|(_, &val)| val.abs() > 1e-6)
+            .map(|(i, &val)| (i, val))
+            .collect();
+        println!("GPU non-zero: {:?}", gpu_nonzero);
         
         // Compare results
         let max_diff = cpu_result.iter()
@@ -39,8 +58,3 @@ async fn main() {
         }
     }
 }
-// This example tests the B-spline basis function evaluation on both CPU and GPU.
-// It initializes a B-spline, evaluates it at several points, and compares the results.
-// The expected output is that the results from CPU and GPU evaluations should match closely.
-// If the maximum difference is within a small tolerance, it confirms that the GPU implementation is working correctly.
-// Make sure to run this example in an environment where the kan_gpu crate is properly set up.

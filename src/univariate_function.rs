@@ -1,5 +1,6 @@
-use std::ops::Range;
 use std::collections::HashMap;
+use std::ops::Range;
+use std::sync::Arc;
 use wgpu::*;
 use wgpu::util::{BufferInitDescriptor, DeviceExt};
 use bytemuck::{Pod, Zeroable};
@@ -19,8 +20,8 @@ pub struct UnivariateFunction {
     pub spline: BSpline,
     pub weights: Vec<f32>,
     // GPU resources
-    pub device: Device,
-    pub queue: Queue,
+    pub device: Arc<Device>,
+    pub queue: Arc<Queue>,
     pub weights_buffer: Buffer,
     pub compute_pipeline: ComputePipeline,
     pub bind_group_layout: BindGroupLayout,
@@ -41,8 +42,8 @@ impl UnivariateFunction {
         }
         
         // Get device and queue from the spline
-        let device = &spline.device;
-        let queue = &spline.queue;
+        let device = spline.device.clone();
+        let queue = spline.queue.clone();
         
         // Create weights buffer
         let weights_buffer = device.create_buffer_init(&BufferInitDescriptor {
@@ -143,8 +144,8 @@ impl UnivariateFunction {
         UnivariateFunction { 
             spline, 
             weights, 
-            device: device.clone(), 
-            queue: queue.clone(),
+            device,
+            queue,
             weights_buffer,
             compute_pipeline,
             bind_group_layout,
@@ -161,7 +162,6 @@ impl UnivariateFunction {
         // Create command encoder
         let mut encoder = self.device.create_command_encoder(&CommandEncoderDescriptor {
             label: Some("Function Command Encoder"),
-            timestamp_writes: None,
         });
         
         {
@@ -316,6 +316,10 @@ impl UnivariateFunction {
         
         // Create compute pipeline for update
         let update_pipeline = self.device.create_compute_pipeline(&ComputePipelineDescriptor {
+            compilation_options: PipelineCompilationOptions {
+                constants: &HashMap::new(),
+                zero_initialize_workgroup_memory: false,
+            },
             label: Some("Update Compute Pipeline"),
             layout: Some(&update_pipeline_layout),
             module: &update_shader,
@@ -325,7 +329,6 @@ impl UnivariateFunction {
         // Create command encoder
         let mut encoder = self.device.create_command_encoder(&CommandEncoderDescriptor {
             label: Some("Update Command Encoder"),
-            timestamp_writes: None,
         });
         
         {
@@ -354,7 +357,6 @@ impl UnivariateFunction {
         // Create command encoder to copy weights
         let mut encoder = self.device.create_command_encoder(&CommandEncoderDescriptor {
             label: Some("Weights Copy Encoder"),
-            timestamp_writes: None,
         });
         
         encoder.copy_buffer_to_buffer(

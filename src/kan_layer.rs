@@ -1,6 +1,8 @@
+use std::collections::HashMap;
+use std::sync::Arc;
 use std::ops::Range;
 use wgpu::*;
-use wgpu::util::BufferInitDescriptor;
+use wgpu::util::{BufferInitDescriptor, DeviceExt};
 use bytemuck::{Pod, Zeroable};
 use crate::univariate_function::UnivariateFunction;
 use crate::shaders::KAN_LAYER_SHADER;
@@ -22,8 +24,8 @@ pub struct KANLayer {
     pub functions: Vec<UnivariateFunction>,
     pub projection: Vec<f32>,
     // GPU resources
-    pub device: Device,
-    pub queue: Queue,
+    pub device: Arc<Device>,  // Changed from Device
+    pub queue: Arc<Queue>,    // Changed from Queue
     pub projection_buffer: Buffer,
     pub compute_pipeline: ComputePipeline,
     pub bind_group_layout: BindGroupLayout,
@@ -141,6 +143,10 @@ impl KANLayer {
         });
         
         let compute_pipeline = device.create_compute_pipeline(&ComputePipelineDescriptor {
+            compilation_options: PipelineCompilationOptions {
+                constants: &HashMap::new(),
+                zero_initialize_workgroup_memory: false,
+            },
             label: Some("Layer Compute Pipeline"),
             layout: Some(&pipeline_layout),
             module: &shader,
@@ -196,8 +202,8 @@ impl KANLayer {
             output_dim,
             functions,
             projection,
-            device,
-            queue,
+            device,  // Already correct since we cloned the Arc
+            queue,   // Already correct since we cloned the Arc
             projection_buffer,
             compute_pipeline,
             bind_group_layout,
@@ -335,8 +341,8 @@ impl KANLayer {
     
     /// Backward pass to compute gradients (GPU)
     pub async fn backward_gpu(&mut self, input: &[f32], output_grad: &[f32], learning_rate: f32) {
-        // This is a simplified backward pass implementation.
-        // A full implementation would use GPU for all computations.
+        // Capture the length before the mutable borrow
+        let num_functions = self.functions.len();
         
         // For each output dimension
         for o in 0..self.output_dim {
@@ -345,7 +351,7 @@ impl KANLayer {
                 // Compute the projection
                 let mut proj = 0.0;
                 for i in 0..self.input_dim {
-                    proj += input[i] * self.projection[i * self.functions.len() + f_idx];
+                    proj += input[i] * self.projection[i * num_functions + f_idx]; // Use num_functions instead
                 }
                 
                 // Update function weights
@@ -353,7 +359,7 @@ impl KANLayer {
                 
                 // Update projection weights (simplified - normally would be done on GPU)
                 for i in 0..self.input_dim {
-                    let idx = i * self.functions.len() + f_idx;
+                    let idx = i * num_functions + f_idx; // Use num_functions instead
                     self.projection[idx] -= learning_rate * output_grad[o] * input[i];
                 }
             }
@@ -369,6 +375,9 @@ impl KANLayer {
     
     /// Backward pass to compute gradients (CPU fallback)
     pub fn backward(&mut self, input: &[f32], output_grad: &[f32], learning_rate: f32) {
+        // Capture the length before the mutable borrow
+        let num_functions = self.functions.len();
+        
         // For each output dimension
         for o in 0..self.output_dim {
             // For each univariate function
@@ -376,7 +385,7 @@ impl KANLayer {
                 // Compute the projection
                 let mut proj = 0.0;
                 for i in 0..self.input_dim {
-                    proj += input[i] * self.projection[i * self.functions.len() + f_idx];
+                    proj += input[i] * self.projection[i * num_functions + f_idx]; // Use num_functions instead
                 }
                 
                 // Update function weights
@@ -384,7 +393,7 @@ impl KANLayer {
                 
                 // Update projection weights
                 for i in 0..self.input_dim {
-                    let idx = i * self.functions.len() + f_idx;
+                    let idx = i * num_functions + f_idx; // Use num_functions instead
                     self.projection[idx] -= learning_rate * output_grad[o] * input[i];
                 }
             }

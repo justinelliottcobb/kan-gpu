@@ -1,5 +1,6 @@
 use std::ops::Range;
 use std::collections::HashMap;
+use std::sync::Arc;
 use wgpu::*;
 use wgpu::util::{BufferInitDescriptor, DeviceExt};
 use bytemuck::{Pod, Zeroable};
@@ -25,8 +26,8 @@ pub struct BSpline {
     pub knots: Vec<f32>,
     pub degree: usize,
     // GPU resources
-    pub device: Device,
-    pub queue: Queue,
+    pub device: Arc<Device>,  // Changed from Device
+    pub queue: Arc<Queue>,    // Changed from Queue
     pub knots_buffer: Buffer,
     pub compute_pipeline: ComputePipeline,
     pub bind_group_layout: BindGroupLayout,
@@ -163,8 +164,8 @@ impl BSpline {
         BSpline {
             knots,
             degree,
-            device,
-            queue,
+            device: Arc::new(device),  // Wrap in Arc::new()
+            queue: Arc::new(queue),    // Wrap in Arc::new()
             knots_buffer,
             compute_pipeline,
             bind_group_layout,
@@ -261,53 +262,56 @@ impl BSpline {
         result
     }
     
-    /// Evaluate the B-spline basis functions at a given point (CPU fallback)
-    pub fn evaluate_basis(&self, x: f32) -> Vec<f32> {
-        let mut basis = vec![0.0; self.knots.len() - self.degree - 1];
-        
-        // Find the knot span
-        let mut span = self.degree;
-        for i in self.degree..self.knots.len() - 1 {
-            if x < self.knots[i + 1] {
-                span = i;
-                break;
-            }
+/// Evaluate the B-spline basis functions at a given point (CPU fallback)
+pub fn evaluate_basis(&self, x: f32) -> Vec<f32> {
+    let num_basis = self.knots.len() - self.degree - 1;
+    let mut basis = vec![0.0; num_basis];
+    
+    // Find the knot span where x lies
+    let mut span = self.degree;
+    for i in self.degree..(self.knots.len() - 1) {
+        if x < self.knots[i + 1] {
+            span = i;
+            break;
         }
-        
-        // Initialize degree 0 basis functions
-        let mut N = vec![0.0; self.degree + 1];
-        for i in 0..=self.degree {
-            if x >= self.knots[span - i] && x < self.knots[span - i + 1] {
-                N[i] = 1.0;
-            }
-        }
-        
-        // Build up basis functions of increasing degree
-        for d in 1..=self.degree {
-            for i in 0..=(self.degree - d) {
-                let left = if self.knots[span - i + d] - self.knots[span - i] > 0.0 {
-                    (x - self.knots[span - i]) / (self.knots[span - i + d] - self.knots[span - i])
-                } else {
-                    0.0
-                };
-                
-                let right = if self.knots[span - i + d + 1] - self.knots[span - i + 1] > 0.0 {
-                    (self.knots[span - i + d + 1] - x) / (self.knots[span - i + d + 1] - self.knots[span - i + 1])
-                } else {
-                    0.0
-                };
-                
-                N[i] = left * N[i] + right * N[i + 1];
-            }
-        }
-        
-        // Fill the basis vector with non-zero values
-        for i in 0..=self.degree {
-            if span - self.degree + i < basis.len() {
-                basis[span - self.degree + i] = N[i];
-            }
-        }
-        
-        basis
     }
+    
+    // Handle the case where x is exactly at the right boundary
+    if x >= self.knots[self.knots.len() - 1] {
+        span = self.knots.len() - self.degree - 2;
+    }
+    
+    // Temporary array for the non-zero basis functions
+    let mut N = vec![0.0; self.degree + 1];
+    
+    // Initialize the zeroth-degree basis function
+    N[0] = 1.0;
+    
+    // Compute the basis functions using the Cox-de Boor recursion formula
+    for j in 1..=self.degree {
+        let mut saved = 0.0;
+        for r in 0..j {
+            let alpha = if self.knots[span + 1 + r] != self.knots[span + 1 + r - j] {
+                (x - self.knots[span + 1 + r - j]) / (self.knots[span + 1 + r] - self.knots[span + 1 + r - j])
+            } else {
+                0.0
+            };
+            
+            let temp = N[r];
+            N[r] = saved + (1.0 - alpha) * temp;
+            saved = alpha * temp;
+        }
+        N[j] = saved;
+    }
+    
+    // Copy the non-zero basis functions to the output array
+    for i in 0..=self.degree {
+        let basis_idx = span - self.degree + i;
+        if basis_idx < basis.len() {
+            basis[basis_idx] = N[i];
+        }
+    }
+    
+    basis
+}
 }

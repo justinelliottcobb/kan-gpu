@@ -1,3 +1,4 @@
+use std::sync::Arc;
 use std::ops::Range;
 use wgpu::*;
 use crate::kan_layer::KANLayer;
@@ -5,8 +6,8 @@ use crate::kan_layer::KANLayer;
 /// A complete Kolmogorov-Arnold Network (GPU accelerated)
 pub struct KAN {
     pub layers: Vec<KANLayer>,
-    pub device: Device,
-    pub queue: Queue,
+    pub device: Arc<Device>,  // Changed from Device
+    pub queue: Arc<Queue>,    // Changed from Queue
 }
 
 impl KAN {
@@ -30,9 +31,9 @@ impl KAN {
         }
         
         // Get device and queue from the first layer
-        let device = layers[0].device.clone();
-        let queue = layers[0].queue.clone();
-        
+        let device = layers[0].device.clone();  // This clones the Arc
+        let queue = layers[0].queue.clone();    // This clones the Arc
+
         KAN { layers, device, queue }
     }
     
